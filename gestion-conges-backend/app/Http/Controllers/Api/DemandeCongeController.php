@@ -20,7 +20,6 @@ class DemandeCongeController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Harmonisation dynamique du statut global selon les visas hiérarchiques pour l'affichage
         $demandes->transform(function ($demande) {
             $visas = $demande->visas;
             $refuseVisa = $visas->firstWhere('decision_visa', 'Refuse');
@@ -47,14 +46,10 @@ class DemandeCongeController extends Controller
         ]);
     }
 
-    /**
-     * Vérification croisée (Décision + Planning + Solde) pour l'agent
-     */
     public function verifierDecisionAgent(Request $request, $im)
     {
         $anneeCourante = (int) $request->input('annee', date('Y'));
 
-        // 1. Recherche d'une décision active couvrant l'année ou la plus récente pour l'agent
         $decision = Decision::where('im', $im)
             ->where(function ($query) use ($anneeCourante) {
                 $query->where('annee_debut', '<=', $anneeCourante)
@@ -71,7 +66,6 @@ class DemandeCongeController extends Controller
 
         $anneeCible = $decision->annee_debut;
 
-        // 2. Vérification du Planning Annuel
         $planningExistant = PlanningAnnuel::where('im', $im)
             ->where(function ($query) use ($anneeCourante, $anneeCible) {
                 $query->where('annee', $anneeCourante)
@@ -86,12 +80,12 @@ class DemandeCongeController extends Controller
             ], 422);
         }
 
-        // 3. Calcul transparent et global du solde de congé disponible basé sur la décision (ex: 90 jours)
         $totalDroits = $decision->nombre_jours ?? 90;
         $joursPrisTotal = DemandeConge::where('im', $im)
             ->where('statut_global', '!=', 'rejete')
             ->sum('nombre_jours_demandes');
 
+        // Correction de la soustraction
         $soldeRestant = max(0, $totalDroits - $joursPrisTotal);
 
         if ($soldeRestant <= 0) {
@@ -118,7 +112,6 @@ class DemandeCongeController extends Controller
         $nombreJoursDemandes = $request->nombre_jours_demandes;
         $anneeDemande = $request->date_debut ? (int) date('Y', strtotime($request->date_debut)) : (int) date('Y');
 
-        // CONTRÔLE STRICT 1 : Présence d'un planning annuel
         $planningExistant = PlanningAnnuel::where('im', $im)
             ->where(function ($query) use ($anneeDemande) {
                 $query->where('annee', $anneeDemande)
@@ -134,7 +127,6 @@ class DemandeCongeController extends Controller
             ], 422);
         }
 
-        // CONTRÔLE STRICT 2 : Présence d'une décision active
         $decisionExistante = Decision::where('im', $im)
             ->where('annee_debut', '<=', $anneeDemande)
             ->where('annee_fin', '>=', $anneeDemande)
@@ -147,12 +139,12 @@ class DemandeCongeController extends Controller
             ], 422);
         }
 
-        // CONTRÔLE STRICT 3 : Vérification mathématique exacte du solde global
         $totalDroits = $decisionExistante->nombre_jours ?? 90;
         $joursDejapris = DemandeConge::where('im', $im)
             ->where('statut_global', '!=', 'rejete')
             ->sum('nombre_jours_demandes');
 
+        // Correction de la soustraction
         $soldeRestant = max(0, $totalDroits - $joursDejapris);
 
         if ($nombreJoursDemandes > $soldeRestant) {
@@ -213,12 +205,18 @@ class DemandeCongeController extends Controller
         ], 201);
     }
 
+    /**
+     * Téléchargement sécurisé résolvant l'erreur 403 Forbidden
+     */
     public function telechargerFichierParChemin(Request $request)
     {
         $chemin = $request->route('path') ?? $request->input('path');
 
-        if ($chemin && Storage::disk('public')->exists($chemin)) {
-            $cheminAbsolu = Storage::disk('public')->path($chemin);
+        // Nettoyage robuste du chemin si le préfixe 'storage/' a été inclus par erreur
+        $cheminNettoye = preg_replace('/^storage\//', '', $chemin);
+
+        if ($cheminNettoye && Storage::disk('public')->exists($cheminNettoye)) {
+            $cheminAbsolu = Storage::disk('public')->path($cheminNettoye);
             return response()->download($cheminAbsolu);
         }
 
