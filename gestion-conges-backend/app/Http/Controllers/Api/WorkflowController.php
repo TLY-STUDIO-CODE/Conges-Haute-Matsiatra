@@ -14,14 +14,22 @@ class WorkflowController extends Controller
 {
     public function index(Request $request)
     {
-        $visas = VisaEtape::with([
+        $user = $request->user();
+
+        $query = VisaEtape::with([
             'demande.personnel',
             'demande.visas',
             'demande.dossierCourrier'
         ])
-            ->where('decision_visa', 'En_Attente')
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ->where('decision_visa', 'En_Attente');
+
+        // Si ce n'est pas l'admin global et qu'il a un grade spécifique,
+        // il ne voit que les visas correspondant à son grade / étape exacte.
+        if ($user && $user->role !== 'admin' && !empty($user->grade)) {
+            $query->where('etape', $user->grade);
+        }
+
+        $visas = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'success' => true,
@@ -46,6 +54,25 @@ class WorkflowController extends Controller
     public function traiterVisa(VisaDemandeRequest $request, $id_visa)
     {
         $visaActuel = VisaEtape::with('demande')->findOrFail($id_visa);
+        $user = $request->user();
+
+        // CONTRÔLE DE SÉCURITÉ PAR GRADE :
+        // Un utilisateur (non admin suprême) ne peut agir que si son grade correspond exactement à l'étape en cours.
+        if ($user && $user->role !== 'admin') {
+            $gradeUser = $user->grade ?? '';
+            // Gérer les equivalences de libellés si besoin (ex: Chef_Hierarchique vs Chef_Service)
+            $etapeActuelle = $visaActuel->etape;
+
+            $estAutorise = ($gradeUser === $etapeActuelle) ||
+                ($gradeUser === 'Chef_Service' && in_array($etapeActuelle, ['Chef_Service', 'Chef_Hierarchique']));
+
+            if (!$estAutorise) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Accès refusé : Votre grade ({$gradeUser}) ne vous autorise pas à valider l'étape en cours ({$etapeActuelle})."
+                ], 403);
+            }
+        }
 
         if ($visaActuel->decision_visa !== 'En_Attente') {
             return response()->json([
@@ -73,11 +100,10 @@ class WorkflowController extends Controller
 
         // Si la demande est REFUSÉE à une étape quelconque
         if ($request->decision_visa === 'Refuse') {
-            // Le statut global prend explicitement "refuse" avec mention de l'étape et du rôle responsable
             $etapeLibelle = str_replace('_', ' ', $visaActuel->etape);
             $demande->update([
                 'statut_global' => 'refuse',
-                'motif_rejet' => "Refusé par {$etapeLibelle}" // Assurez-vous d'avoir ce champ ou stockez-le si besoin dans le motif/commentaire
+                'motif_rejet' => "Refusé par {$etapeLibelle}"
             ]);
 
             return response()->json([
@@ -110,7 +136,7 @@ class WorkflowController extends Controller
                 ]);
             }
 
-            // Statut intermédiaire de transmission hiérarchique (en attente de l'étape suivante)
+            // Statut intermédiaire de transmission hiérarchique
             $demande->update(['statut_global' => 'en_attente']);
 
             return response()->json([

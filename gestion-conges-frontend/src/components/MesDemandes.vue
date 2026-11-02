@@ -9,6 +9,9 @@ const error = ref("");
 const selectedDemande = ref(null);
 const showAddModal = ref(false);
 
+// Récupération du rôle utilisateur depuis le localStorage
+const userRole = ref(localStorage.getItem("user_role") || "user");
+
 // Visionneuse grand format / modal de document
 const previewDocument = ref(null);
 
@@ -147,6 +150,11 @@ const handleMultiFileUpload = (event, type) => {
 };
 
 const submitDemande = async () => {
+  if (userRole.value === "admin") {
+    formError.value = "Action non autorisée : Réservé au profil RH.";
+    return;
+  }
+
   submitting.value = true;
   formError.value = "";
   formSuccess.value = "";
@@ -245,7 +253,6 @@ const isImageFile = (path) => {
   return ["jpg", "jpeg", "png", "webp", "gif"].includes(ext);
 };
 
-// Gestion dynamique des badges de statut selon la validation hiérarchique
 const getBadgeClass = (statut) => {
   const currentStatut = (statut || "").toLowerCase();
   if (currentStatut.includes("valide") || currentStatut.includes("approuve")) {
@@ -261,10 +268,8 @@ const getBadgeClass = (statut) => {
 };
 
 const getStatutLabel = (demande) => {
-  // S'appuie en priorité sur l'attribut calculé par le back-end s'il existe
   if (demande.statut_global_affiche) return demande.statut_global_affiche;
 
-  // Analyse de secours basée sur les visas
   const visas = demande.visas || [];
   const refuseVisa = visas.find((v) => v.decision_visa === "Refuse");
   if (refuseVisa) {
@@ -333,9 +338,21 @@ onMounted(() => {
         </p>
       </div>
       <div class="flex items-center flex-wrap gap-2 w-full md:w-auto">
+        <!-- Bouton Nouvelle Demande : Grisé et désactivé si Admin -->
         <button
-          @click="showAddModal = true"
-          class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 font-medium shadow-sm cursor-pointer"
+          @click="userRole === 'user' ? (showAddModal = true) : null"
+          :disabled="userRole === 'admin'"
+          :title="
+            userRole === 'admin'
+              ? 'Accès restreint : Réservé au profil RH pour la soumission.'
+              : 'Créer une nouvelle demande'
+          "
+          :class="[
+            'text-xs px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 font-medium shadow-sm',
+            userRole === 'admin'
+              ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60'
+              : 'bg-slate-800 hover:bg-slate-700 text-white cursor-pointer',
+          ]"
         >
           <span class="material-symbols-outlined text-sm">add_circle</span>
           Nouvelle Demande
@@ -552,9 +569,9 @@ onMounted(() => {
       </table>
     </div>
 
-    <!-- MODALE D'ENREGISTREMENT -->
+    <!-- MODALE D'ENREGISTREMENT (Accessible uniquement si l'utilisateur n'est pas admin) -->
     <div
-      v-if="showAddModal"
+      v-if="showAddModal && userRole === 'user'"
       class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto"
     >
       <div
@@ -591,7 +608,6 @@ onMounted(() => {
         </div>
 
         <form @submit.prevent="submitDemande" class="space-y-3.5 text-xs">
-          <!-- Sélection de l'Agent et Contrôles Préalables -->
           <div>
             <label class="block font-medium text-slate-700 mb-1"
               >Immatriculation (IM) Agent</label
@@ -612,7 +628,6 @@ onMounted(() => {
                 </option>
               </select>
 
-              <!-- Boutons de vérification (Planning + Décision Officielle) -->
               <div class="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -639,7 +654,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Affichage du Résultat de Vérification Planning -->
           <div
             v-if="verifMessage"
             class="p-2.5 border rounded-lg text-xs space-y-1 bg-slate-50 border-slate-200 text-slate-700"
@@ -652,7 +666,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Affichage du Résultat de Vérification Décision -->
           <div
             v-if="decisionVerifMessage"
             class="p-2.5 border rounded-lg text-xs space-y-1 bg-slate-50 border-slate-200 text-slate-700"
@@ -837,7 +850,6 @@ onMounted(() => {
             }}</span>
           </p>
 
-          <!-- Section Fichiers Multiples & Décision Officielle -->
           <div class="pt-3 border-t border-slate-200 space-y-3">
             <p class="font-semibold text-slate-900 flex items-center gap-1">
               <span class="material-symbols-outlined text-sm">folder_open</span>
@@ -845,7 +857,6 @@ onMounted(() => {
             </p>
 
             <div class="space-y-3">
-              <!-- Décision Officielle -->
               <div
                 v-if="
                   selectedDemande.fichier_decision &&
@@ -887,7 +898,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Fichiers Demande -->
               <div
                 v-if="
                   selectedDemande.fichier_demande &&
@@ -940,7 +950,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Fichiers Planning -->
               <div
                 v-if="
                   selectedDemande.fichier_planning &&
