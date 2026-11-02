@@ -12,6 +12,9 @@ const submitting = ref(false);
 const formError = ref("");
 const formSuccess = ref("");
 
+// Récupération du rôle utilisateur depuis le localStorage (défini lors de la connexion)
+const userRole = ref(localStorage.getItem("user_role") || "user");
+
 const form = ref({
   im: "",
   nom: "",
@@ -60,6 +63,12 @@ const exporterCsv = async () => {
 };
 
 const enregistrerPersonnel = async () => {
+  // Double sécurité : interdire l'action côté front si le rôle est admin
+  if (userRole.value === "admin") {
+    formError.value = "Action non autorisée : Réservé au profil RH.";
+    return;
+  }
+
   submitting.value = true;
   formError.value = "";
   formSuccess.value = "";
@@ -121,15 +130,28 @@ onMounted(() => {
         </p>
       </div>
       <div class="flex items-center flex-wrap gap-2 w-full md:w-auto">
+        <!-- Bouton Nouvel Agent : Grisé et désactivé si Admin -->
         <button
-          @click="showAddModal = true"
-          class="bg-[#1A222C] hover:bg-black text-white text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 font-medium shadow-sm cursor-pointer"
+          @click="userRole === 'user' ? (showAddModal = true) : null"
+          :disabled="userRole === 'admin'"
+          :title="
+            userRole === 'admin'
+              ? 'Accès restreint : Réservé au profil RH pour les ajouts.'
+              : 'Ajouter un nouvel agent'
+          "
+          :class="[
+            'text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 font-medium shadow-sm',
+            userRole === 'admin'
+              ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60'
+              : 'bg-[#1A222C] hover:bg-black text-white cursor-pointer',
+          ]"
         >
           <span class="material-symbols-outlined text-sm text-slate-300"
             >person_add</span
           >
           Nouvel Agent
         </button>
+
         <button
           @click="exporterCsv"
           class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs px-3.5 py-2.5 rounded-xl transition flex items-center gap-1.5 font-medium shadow-sm cursor-pointer"
@@ -226,9 +248,9 @@ onMounted(() => {
       </table>
     </div>
 
-    <!-- MODALE D'AJOUT -->
+    <!-- MODALE D'AJOUT (Accessible uniquement si l'utilisateur n'est pas admin) -->
     <div
-      v-if="showAddModal"
+      v-if="showAddModal && userRole === 'user'"
       class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto backdrop-blur-xs"
     >
       <div
@@ -448,7 +470,6 @@ onMounted(() => {
             >
           </p>
         </div>
-        y6
 
         <div class="flex justify-end pt-4 border-t border-slate-200">
           <button

@@ -10,6 +10,9 @@ const error = ref("");
 const successMessage = ref("");
 const modalConsultation = ref(null);
 
+// Récupération du rôle utilisateur depuis le localStorage (défini à la connexion)
+const userRole = ref(localStorage.getItem("user_role") || "user");
+
 const fetchVisas = async () => {
   loading.value = true;
   error.value = "";
@@ -30,6 +33,13 @@ const fetchVisas = async () => {
 };
 
 const traiterVisa = async (visa, decision) => {
+  // Sécurité front-end supplémentaire : interdire si utilisateur non admin
+  if (userRole.value !== "admin") {
+    error.value =
+      "Action non autorisée : Réservé au profil Administrateur (DG).";
+    return;
+  }
+
   const idVisa = visa.id_visa || visa.id;
   const decisionFormatee = decision === "valide" ? "Valide" : "Refuse";
 
@@ -155,7 +165,11 @@ onMounted(() => {
           Espace de Validation Hiérarchique
         </h3>
         <p class="text-sm text-slate-500 mt-1">
-          Validez ou refusez les demandes de congés transmises par les agents.
+          {{
+            userRole === "admin"
+              ? "Validez ou refusez les demandes de congés transmises par les agents."
+              : "Consultation des demandes de congés en attente de validation hiérarchique (Accès RH en lecture seule)."
+          }}
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -334,24 +348,30 @@ onMounted(() => {
                   >
                   Consulter
                 </button>
-                <button
-                  @click="traiterVisa(visa, 'valide')"
-                  :disabled="processingId === (visa.id_visa || visa.id)"
-                  class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-medium transition shadow-sm inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <span class="material-symbols-outlined text-sm"
-                    >check_circle</span
+
+                <!-- Boutons Valider / Refuser visibles et cliquables UNIQUEMENT pour l'Admin -->
+                <template v-if="userRole === 'admin'">
+                  <button
+                    @click="traiterVisa(visa, 'valide')"
+                    :disabled="processingId === (visa.id_visa || visa.id)"
+                    class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-medium transition shadow-sm inline-flex items-center gap-1 cursor-pointer"
                   >
-                  Valider
-                </button>
-                <button
-                  @click="traiterVisa(visa, 'refuse')"
-                  :disabled="processingId === (visa.id_visa || visa.id)"
-                  class="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-medium transition shadow-sm inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <span class="material-symbols-outlined text-sm">cancel</span>
-                  Refuser
-                </button>
+                    <span class="material-symbols-outlined text-sm"
+                      >check_circle</span
+                    >
+                    Valider
+                  </button>
+                  <button
+                    @click="traiterVisa(visa, 'refuse')"
+                    :disabled="processingId === (visa.id_visa || visa.id)"
+                    class="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-medium transition shadow-sm inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span class="material-symbols-outlined text-sm"
+                      >cancel</span
+                    >
+                    Refuser
+                  </button>
+                </template>
               </div>
             </td>
           </tr>
